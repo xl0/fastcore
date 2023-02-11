@@ -9,7 +9,7 @@ __all__ = ['spark_chars', 'walk', 'globtastic', 'maybe_open', 'mkdir', 'image_si
            'repr_dict', 'is_listy', 'mapped', 'IterLen', 'ReindexCollection', 'get_source_link', 'truncstr',
            'sparkline', 'modify_exception', 'round_multiple', 'set_num_threads', 'join_path_file', 'autostart',
            'EventTimer', 'stringfmt_names', 'PartialFormatter', 'partial_format', 'utc2local', 'local2utc', 'trace',
-           'modified_env', 'ContextManagers', 'shufflish', 'console_help']
+           'modified_env', 'ContextManagers', 'shufflish', 'console_help', 'lessdiff']
 
 # %% ../nbs/03_xtras.ipynb 2
 from .imports import *
@@ -565,3 +565,47 @@ def console_help(
             nm = S.bold.light_blue(e.name)
             print(f'{nm:45}{e.load().__doc__}')
 
+
+# %% ../nbs/03_xtras.ipynb 160
+def patch_print_png():
+    "Patch matplotlib to add a deteministic Software tag to the png metadata"
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+
+    _print_png = FigureCanvasAgg.print_png
+    @patch_to(FigureCanvasAgg)
+    def print_png(self, filename_or_obj, *, metadata=None, pil_kwargs=None):
+        if metadata is None: metadata = {}
+        # Add a Software tag if one is not present in metadata. Oherwise mpl includes its version.
+        metadata = {**{"Software": "Matplotlib"}, **metadata}
+        return _print_png(self, filename_or_obj, metadata=metadata, pil_kwargs=pil_kwargs)
+
+    # mpl does interesting things if print function is not from an mpl module.
+    FigureCanvasAgg.print_png.__module__ = FigureCanvasAgg.__module__
+
+# %% ../nbs/03_xtras.ipynb 161
+def patch_print_svg():
+    "Patch matplotlib to add a deteministic Creator and Date tags to the svg metadata"
+    from matplotlib.backends.backend_svg import FigureCanvasSVG
+
+    _print_svg = FigureCanvasSVG.print_svg
+    @patch_to(FigureCanvasSVG)
+    def print_svg(self, filename, *, bbox_inches_restore=None, metadata=None):
+        if metadata is None: metadata = {}
+        metadata = {**{"Creator": "Matplotlib", "Date": None}, **metadata}
+        return _print_svg(self, filename, bbox_inches_restore=bbox_inches_restore, metadata=metadata)
+
+    FigureCanvasSVG.print_svg.__module__ = FigureCanvasSVG.__module__
+
+# %% ../nbs/03_xtras.ipynb 162
+def lessdiff(dpi=100, formats="png"):
+    "Minimize the notebook output changes introduced by Matplotlib and environment"
+    try:
+        from matplotlib import rcParams
+        rcParams['svg.hashsalt'] = "0"
+        if dpi: rcParams['figure.dpi'] = dpi
+        if formats:
+            from matplotlib_inline.backend_inline import set_matplotlib_formats
+            set_matplotlib_formats(*L(formats))
+        patch_print_png()
+        patch_print_svg()
+    except ImportError: pass
