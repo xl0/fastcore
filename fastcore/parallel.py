@@ -35,17 +35,6 @@ def startthread(f):
     threaded(f)()
 
 # %% ../nbs/03a_parallel.ipynb 9
-def _call(lock, pause, n, g, item):
-    l = False
-    if pause:
-        try:
-            l = lock.acquire(timeout=pause*(n+2))
-            time.sleep(pause)
-        finally:
-            if l: lock.release()
-    return g(item)
-
-# %% ../nbs/03a_parallel.ipynb 10
 def parallelable(param_name, num_workers, f=None):
     f_in_main = f == None or sys.modules[f.__module__].__name__ == "__main__"
     if sys.platform == "win32" and IN_NOTEBOOK and num_workers > 0 and f_in_main:
@@ -54,7 +43,7 @@ def parallelable(param_name, num_workers, f=None):
         return False
     return True
 
-# %% ../nbs/03a_parallel.ipynb 15
+# %% ../nbs/03a_parallel.ipynb 10
 class NoDaemonProcess(Process):
     # See https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic
     @property
@@ -64,7 +53,7 @@ class NoDaemonProcess(Process):
     def daemon(self, value):
         pass
 
-# %% ../nbs/03a_parallel.ipynb 16
+# %% ../nbs/03a_parallel.ipynb 11
 @delegates()
 class ProcessPool(pool.Pool):
     "Same as Python's `pool.Pool`, except not daemonic and can pass reuse_workers=False"
@@ -74,11 +63,17 @@ class ProcessPool(pool.Pool):
         class NoDaemonContext(type(context)): Process=NoDaemonProcess
         super().__init__(max_workers, context=NoDaemonContext(), maxtasksperchild=None if reuse_workers else 1)
 
-# %% ../nbs/03a_parallel.ipynb 17
+# %% ../nbs/03a_parallel.ipynb 12
 try: from fastprogress import progress_bar
 except: progress_bar = None
 
-# %% ../nbs/03a_parallel.ipynb 18
+# %% ../nbs/03a_parallel.ipynb 13
+def _gen(items, pause):
+    for item in items:
+        time.sleep(pause)
+        yield item
+
+# %% ../nbs/03a_parallel.ipynb 14
 def parallel(f, items, *args, n_workers=defaults.cpus, total=None, progress=None, pause=0,
             method=None, chunksize=1, reuse_workers=True, **kwargs):
     "Applies `func` in parallel to `items`, using `n_workers`"
@@ -87,22 +82,21 @@ def parallel(f, items, *args, n_workers=defaults.cpus, total=None, progress=None
     if not parallelable('n_workers', n_workers, f): n_workers=0
     if n_workers==0: return L(map(g, items))
     with ProcessPool(n_workers, context=get_context(method), reuse_workers=reuse_workers) as ex:
-        lock = Manager().Lock()
-        _g = partial(_call, lock, pause, n_workers, g)
-        r = ex.imap(_g, items, chunksize=chunksize)
+        _items = _gen(items, pause)
+        r = ex.imap(g, _items, chunksize=chunksize)
         if progress and progress_bar:
             if total is None: total = len(items)
             r = progress_bar(r, total=len(items), leave=False)
         return L(r) # Collect the items from the iterator before we leave the pool context
 
-# %% ../nbs/03a_parallel.ipynb 19
+# %% ../nbs/03a_parallel.ipynb 15
 def add_one(x, a=1):
     # this import is necessary for multiprocessing in notebook on windows
     import random
     time.sleep(random.random()/80)
     return x+a
 
-# %% ../nbs/03a_parallel.ipynb 25
+# %% ../nbs/03a_parallel.ipynb 21
 def run_procs(f, f_done, args):
     "Call `f` for each item in `args` in parallel, yielding `f_done`"
     processes = L(args).map(Process, args=arg0, target=f)
@@ -110,13 +104,13 @@ def run_procs(f, f_done, args):
     yield from f_done()
     processes.map(Self.join())
 
-# %% ../nbs/03a_parallel.ipynb 26
+# %% ../nbs/03a_parallel.ipynb 22
 def _f_pg(obj, queue, batch, start_idx):
     for i,b in enumerate(obj(batch)): queue.put((start_idx+i,b))
 
 def _done_pg(queue, items): return (queue.get() for _ in items)
 
-# %% ../nbs/03a_parallel.ipynb 27
+# %% ../nbs/03a_parallel.ipynb 23
 def parallel_gen(cls, items, n_workers=defaults.cpus, **kwargs):
     "Instantiate `cls` in `n_workers` procs & call each on a subset of `items` in parallel."
     if not parallelable('n_workers', n_workers): n_workers = 0
