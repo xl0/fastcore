@@ -5,6 +5,10 @@ __all__ = ['threaded', 'startthread', 'parallelable', 'NoDaemonProcess', 'Proces
            'parallel_gen']
 
 # %% ../nbs/03a_parallel.ipynb 1
+import time
+from threading import Thread
+from multiprocessing import pool,Process,Queue,set_start_method,get_context
+
 from .imports import *
 from .basics import *
 from .foundation import *
@@ -12,9 +16,7 @@ from .meta import *
 from .xtras import *
 from functools import wraps
 
-import concurrent.futures,time
-from multiprocessing import pool,Process,Queue,Manager,set_start_method,get_all_start_methods,get_context
-from threading import Thread
+# %% ../nbs/03a_parallel.ipynb 2
 try:
     if sys.platform == 'darwin' and IN_NOTEBOOK: set_start_method("fork")
 except: pass
